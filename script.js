@@ -185,8 +185,62 @@ document.addEventListener('DOMContentLoaded', function () {
             data: new Date().toISOString() // Adicionar timestamp
         };
 
-        // Salvar cliente
-        saveCliente(cliente);
+        // Mostrar indicador de carregamento
+        const submitBtn = this.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+        submitBtn.disabled = true;
+
+        // Enviar para o backend (API Flask)
+        fetch('http://localhost:5000/api/clientes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(cliente)
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro na requisição: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Sucesso - dados salvos no banco de dados
+                console.log('Dados salvos com sucesso:', data);
+
+                // Adicionar classe de sucesso ao botão
+                submitBtn.innerHTML = '<i class="fas fa-check"></i> Salvo com Sucesso!';
+                submitBtn.classList.add('btn-success');
+
+                // Também salvar no localStorage para funcionalidade offline
+                saveCliente(cliente);
+
+                // Resetar formulário
+                form.reset();
+
+                // Restaurar botão após 2 segundos
+                setTimeout(() => {
+                    submitBtn.innerHTML = originalBtnText;
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('btn-success');
+                }, 2000);
+            })
+            .catch(error => {
+                // Erro - problema ao salvar no banco de dados
+                console.error('Erro ao salvar dados:', error);
+
+                // Mostrar erro no botão
+                submitBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro ao Salvar';
+                submitBtn.classList.add('btn-error');
+
+                // Restaurar botão após 3 segundos
+                setTimeout(() => {
+                    submitBtn.innerHTML = originalBtnText;
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('btn-error');
+                }, 3000);
+            });
 
         // Atualizar a lista na tabela
         addClienteToTable(cliente);
@@ -232,8 +286,48 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------- FUNCIONALIDADE DE RELATÓRIOS ----------
     document.getElementById('atualizarRelatorio').addEventListener('click', gerarRelatorio);
 
+    // Adicionar ou corrigir o event listener para o botão de atualizar relatório
+    const btnAtualizarRelatorio = document.getElementById('atualizarRelatorio');
+
+    if (btnAtualizarRelatorio) {
+        // Remover qualquer evento anterior para evitar duplicação
+        btnAtualizarRelatorio.removeEventListener('click', gerarRelatorio);
+
+        // Adicionar o evento de clique com feedback visual
+        btnAtualizarRelatorio.addEventListener('click', function () {
+            // Adicionar classe de animação ao ícone
+            const icon = this.querySelector('i');
+            icon.classList.add('fa-spin');
+
+            // Executar a função de gerar relatório
+            gerarRelatorio();
+
+            // Feedback visual de sucesso
+            this.classList.add('btn-success');
+
+            // Mostrar mensagem de status
+            const statusEl = document.getElementById('atualizacaoStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Relatório atualizado com sucesso!';
+                statusEl.classList.add('show');
+            }
+
+            // Remover as classes após 2 segundos
+            setTimeout(() => {
+                icon.classList.remove('fa-spin');
+                this.classList.remove('btn-success');
+                if (statusEl) {
+                    statusEl.classList.remove('show');
+                }
+            }, 2000);
+        });
+    }
+
     // Função para gerar relatório
     function gerarRelatorio() {
+        console.log('Gerando relatório...'); // Ajuda a depurar
+
+        // Obter os clientes do localStorage
         const clientes = JSON.parse(localStorage.getItem('lavajatoClientes')) || [];
 
         // Inicializar contadores
@@ -253,7 +347,10 @@ document.addEventListener('DOMContentLoaded', function () {
         // Processar cada cliente
         clientes.forEach(cliente => {
             // Extrair o valor numérico da string (ex: "R$ 30.00" -> 30)
-            const valor = parseFloat(cliente.valor.replace('R$ ', '').replace(',', '.')) || 0;
+            let valor = 0;
+            if (cliente.valor) {
+                valor = parseFloat(cliente.valor.replace('R$ ', '').replace(',', '.')) || 0;
+            }
 
             // Contar tipos de veículos
             if (cliente.tipoVeiculo === 'Carro') {
@@ -265,10 +362,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // Contar tipos de lavagem e calcular valores
             if (cliente.tipo === 'Simples') {
                 totalSimples++;
-                valorSimples += 30; // R$ 30 por lavagem simples
+                valorSimples += cliente.tipo === 'Simples' ? 30 : 0;
             } else if (cliente.tipo === 'Completa') {
                 totalCompleta++;
-                valorCompleta += 50; // R$ 50 por lavagem completa
+                valorCompleta += cliente.tipo === 'Completa' ? 50 : 0;
             }
 
             // Contar formas de pagamento e somar valores
@@ -291,28 +388,50 @@ document.addEventListener('DOMContentLoaded', function () {
         const totalPagamentos = totalDinheiro + totalCartao + totalPix;
         const valorTotalPagamentos = valorDinheiro + valorCartao + valorPix;
 
-        // Atualizar elementos do DOM
-        document.getElementById('totalCarros').textContent = totalCarros;
-        document.getElementById('totalMotos').textContent = totalMotos;
-        document.getElementById('totalVeiculos').textContent = totalVeiculos;
+        // Atualizar elementos do DOM - verificando se existem antes
+        atualizarElemento('totalCarros', totalCarros);
+        atualizarElemento('totalMotos', totalMotos);
+        atualizarElemento('totalVeiculos', totalVeiculos);
 
-        document.getElementById('totalSimples').textContent = totalSimples;
-        document.getElementById('totalCompleta').textContent = totalCompleta;
-        document.getElementById('totalServicos').textContent = totalServicos;
+        atualizarElemento('totalSimples', totalSimples);
+        atualizarElemento('totalCompleta', totalCompleta);
+        atualizarElemento('totalServicos', totalServicos);
 
-        document.getElementById('valorSimples').textContent = `R$ ${valorSimples.toFixed(2)}`;
-        document.getElementById('valorCompleta').textContent = `R$ ${valorCompleta.toFixed(2)}`;
-        document.getElementById('valorTotal').textContent = `R$ ${valorTotal.toFixed(2)}`;
+        atualizarElementoValor('valorSimples', valorSimples);
+        atualizarElementoValor('valorCompleta', valorCompleta);
+        atualizarElementoValor('valorTotal', valorTotal);
 
-        document.getElementById('totalDinheiro').textContent = totalDinheiro;
-        document.getElementById('totalCartao').textContent = totalCartao;
-        document.getElementById('totalPix').textContent = totalPix;
-        document.getElementById('totalPagamentos').textContent = totalPagamentos;
+        atualizarElemento('totalDinheiro', totalDinheiro);
+        atualizarElemento('totalCartao', totalCartao);
+        atualizarElemento('totalPix', totalPix);
+        atualizarElemento('totalPagamentos', totalPagamentos);
 
-        document.getElementById('valorDinheiro').textContent = `R$ ${valorDinheiro.toFixed(2)}`;
-        document.getElementById('valorCartao').textContent = `R$ ${valorCartao.toFixed(2)}`;
-        document.getElementById('valorPix').textContent = `R$ ${valorPix.toFixed(2)}`;
-        document.getElementById('valorTotalPagamentos').textContent = `R$ ${valorTotalPagamentos.toFixed(2)}`;
+        atualizarElementoValor('valorDinheiro', valorDinheiro);
+        atualizarElementoValor('valorCartao', valorCartao);
+        atualizarElementoValor('valorPix', valorPix);
+        atualizarElementoValor('valorTotalPagamentos', valorTotalPagamentos);
+
+        console.log('Relatório gerado com sucesso!'); // Ajuda a depurar
+    }
+
+    // Função auxiliar para atualizar elementos com verificação
+    function atualizarElemento(id, valor) {
+        const elemento = document.getElementById(id);
+        if (elemento) {
+            elemento.textContent = valor;
+        } else {
+            console.warn(`Elemento com ID '${id}' não encontrado`);
+        }
+    }
+
+    // Função auxiliar para atualizar elementos de valor monetário
+    function atualizarElementoValor(id, valor) {
+        const elemento = document.getElementById(id);
+        if (elemento) {
+            elemento.textContent = `R$ ${valor.toFixed(2)}`;
+        } else {
+            console.warn(`Elemento com ID '${id}' não encontrado`);
+        }
     }
 
     // ---------- FUNÇÕES UTILITÁRIAS ----------
@@ -414,4 +533,39 @@ document.addEventListener('DOMContentLoaded', function () {
             default: return forma;
         }
     }
+
+    // ---------- VERIFICAÇÃO DE CONEXÃO COM O BANCO DE DADOS ----------
+    function checkDBConnection() {
+        const dbStatus = document.getElementById('dbStatus');
+
+        // Endpoint simples que apenas verifica se a API está rodando
+        fetch('http://localhost:5000/ping')
+            .then(response => {
+                if (response.ok) {
+                    dbStatus.innerHTML = '<i class="fas fa-database"></i><span>Conectado ao Banco de Dados</span>';
+                    dbStatus.classList.add('connected');
+                    dbStatus.classList.remove('disconnected');
+
+                    // Esconder após 5 segundos
+                    setTimeout(() => {
+                        dbStatus.style.opacity = '0';
+                        // Remover depois de desaparecer
+                        setTimeout(() => {
+                            dbStatus.style.display = 'none';
+                        }, 500);
+                    }, 5000);
+                } else {
+                    throw new Error('API indisponível');
+                }
+            })
+            .catch(error => {
+                console.error('Erro de conexão:', error);
+                dbStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>Sem conexão com o Banco de Dados</span>';
+                dbStatus.classList.add('disconnected');
+                dbStatus.classList.remove('connected');
+            });
+    }
+
+    // Verificar conexão ao carregar a página
+    checkDBConnection();
 });
